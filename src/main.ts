@@ -16,8 +16,10 @@ const PROVIDER_DEFAULTS = {
 const toolkit = new BasicTool();
 let sectionID = '';
 let popupHandler: any;
+let toolbarHandler: any;
 let root = '';
 const pending = new Map<string,string[]>();
+const pendingQuestion = new Map<string,string>();
 const active = new Map<string,HTMLElement>();
 
 function pref(key:string):any { return Services.prefs.getCharPref(PREFIX+key, ''); }
@@ -148,14 +150,38 @@ async function renderSection(body:HTMLElement, raw:any):Promise<void> {
   function add(role:string,text:string):HTMLElement{const bubble=doc.createElement('div');bubble.className=`ai-bubble ai-${role}`;bubble.textContent=text;messages.append(bubble);return bubble;}
   history.forEach(m=>add(m.role,m.content));
   const send=button(doc,'发送',async()=>{const selected=(pending.get(current)||[]).join('\n'),question=input.value.trim();if(!question)return;input.value='';const user=selected?`${question}\n【选中】${selected}`:question;add('user',user);history.push({role:'user',content:user});const bubble=add('assistant','正在回答…');try{const web=await search(item,selected,question);const context=(item.getField('abstractNote')||'').slice(0,2000);const answer=await llm(questionPrompt(item,selected,question,web,context),s=>bubble.textContent=s);history.push({role:'assistant',content:answer});pending.delete(current);await writeJSON(item,'ai_conversation',{itemKey:item.key,messages:history});}catch(e){bubble.textContent=`回答失败：${error(e)}`;}});send.className='ai-send';chat.append(send);
+  const queued=pendingQuestion.get(current);if(queued){pendingQuestion.delete(current);input.value=queued;send.click();}
+}
+function openAIPane(reader:any):boolean {
+  const windows=[reader?._iframeWindow?.top,Zotero.getMainWindow()].filter(Boolean);
+  for(const win of windows){
+    try{
+      const doc=win.document as Document;
+      const nav=doc.getElementById('zotero-context-pane-sidenav') || doc.getElementById('zotero-view-item-sidenav');
+      const target=nav?.querySelector<HTMLElement>('[data-pane="ai-literature-summary"]');
+      if(target){if(win.ZoteroContextPane?.collapsed)win.ZoteroContextPane.collapsed=false;target.click();return true;}
+    }catch{}
+  }
+  return false;
+}
+function onToolbar({reader,doc,append}:any):void {
+  // Zotero Reader renderToolbar：提供可见的右侧 AI 入口。
+  const control=doc.createElement('button');control.type='button';control.className='ai-literature-toolbar-button';
+  control.title='打开右侧 AI 总结与问答';control.setAttribute('aria-label','打开 AI 助手');
+  control.innerHTML='<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="m10 1 1.6 5.4L17 8l-5.4 1.6L10 15l-1.6-5.4L3 8l5.4-1.6L10 1Zm6 11 .8 2.2L19 15l-2.2.8L16 18l-.8-2.2L13 15l2.2-.8L16 12Z"/></svg><span>AI 助手</span>';
+  control.style.cssText='display:inline-flex;align-items:center;gap:5px;border:1px solid var(--border-color,#c8c8c8);border-radius:7px;padding:5px 9px;margin:0 4px;background:var(--toolbar-bg,#f8f8f8);color:var(--text-color,#333);font:600 12px sans-serif;cursor:pointer;white-space:nowrap';
+  control.addEventListener('click',()=>{if(!openAIPane(reader))reader?._iframeWindow?.alert?.('请在右侧条目面板中打开“AI 总结”');});
+  append(control);
 }
 function onSelection({reader,doc,params,append}:any):void {
   const selected=String(params?.annotation?.text||'').trim();if(!selected)return;
   const raw=Zotero.Items.get(reader.itemID);const item=parent(raw);if(!item)return;
   const row=doc.createElement('div');row.className='ai-selection-actions';
+  row.style.cssText='display:flex;align-items:center;gap:4px;padding:4px;border-radius:8px;background:var(--popup-bg,#fff);box-shadow:0 1px 5px #0002';
+  const action=(label:string,icon:string,handler:()=>void)=>{const b=button(doc,`${icon} ${label}`,handler);b.type='button';b.style.cssText='border:0;border-radius:6px;background:transparent;color:var(--text-color,#333);font:500 12px sans-serif;white-space:nowrap;padding:5px 8px;cursor:pointer';b.addEventListener('mouseenter',()=>b.style.background='var(--fill-quinary,#e9edf5)');b.addEventListener('mouseleave',()=>b.style.background='transparent');return b;};
   // 参考 zotero-dsh：只追加两个按钮，保留 Zotero 原生气泡操作。
-  row.append(button(doc,'加入对话',()=>{const k=key(item);pending.set(k,[...(pending.get(k)||[]),selected]);}));
-  row.append(button(doc,'提问',()=>{const k=key(item);pending.set(k,[selected]);const pane=active.get(k);const input=pane?.querySelector('textarea') as HTMLTextAreaElement|null;if(input){input.focus();if(!input.value.trim())input.value=reader._iframeWindow?.prompt?.('请输入问题')||'';if(input.value.trim())(pane!.querySelector('.ai-send') as HTMLButtonElement)?.click();}else reader._iframeWindow?.alert?.('请先打开右侧的 AI 总结区域');}));append(row);
+  row.append(action('加入对话','+',()=>{const k=key(item);pending.set(k,[...(pending.get(k)||[]),selected]);openAIPane(reader);}));
+  row.append(action('提问','✦',()=>{const k=key(item);pending.set(k,[selected]);const pane=active.get(k);const input=pane?.isConnected?pane.querySelector('textarea') as HTMLTextAreaElement:null;const question=input?.value.trim()||reader._iframeWindow?.prompt?.('请输入问题')?.trim()||'';if(!question)return;if(input){input.value=question;(pane!.querySelector('.ai-send') as HTMLButtonElement)?.click();}else{pendingQuestion.set(k,question);if(!openAIPane(reader))reader._iframeWindow?.alert?.('请在右侧条目面板中打开“AI 总结”');}}));append(row);
 }
 function setupPrefs():void {
   Zotero.AILiteraturePreferences = { init: initPreferences };
@@ -203,5 +229,5 @@ function initPreferences(win:Window):void {
     }
   }
 }
-export async function start(uri:string):Promise<void>{root=uri;setupPrefs();sectionID=Zotero.ItemPaneManager.registerSection({paneID:'ai-literature-summary',pluginID:ID,header:{l10nID:'ai-literature-header',icon:root+'content/icon.svg'},sidenav:{l10nID:'ai-literature-header',icon:root+'content/icon.svg'},bodyXHTML:'<div xmlns="http://www.w3.org/1999/xhtml"></div>',onAsyncRender:async({body,item}:any)=>renderSection(body,item)});popupHandler=onSelection;Zotero.Reader.registerEventListener('renderTextSelectionPopup',popupHandler,ID);}
-export function stop():void{if(sectionID)Zotero.ItemPaneManager.unregisterSection(sectionID);if(popupHandler)Zotero.Reader.unregisterEventListener('renderTextSelectionPopup',popupHandler);delete Zotero.AILiteraturePreferences;active.clear();pending.clear();}
+export async function start(uri:string):Promise<void>{root=uri;setupPrefs();sectionID=Zotero.ItemPaneManager.registerSection({paneID:'ai-literature-summary',pluginID:ID,header:{l10nID:'ai-literature-header',icon:root+'content/icon.svg'},sidenav:{l10nID:'ai-literature-header',icon:root+'content/icon.svg'},bodyXHTML:'<div xmlns="http://www.w3.org/1999/xhtml"></div>',onItemChange:({item,setEnabled}:any)=>{setEnabled(Boolean(parent(item)?.isRegularItem?.()));return true;},onRender:({body}:any)=>{body.textContent='正在加载 AI 助手…';},onAsyncRender:async({body,item}:any)=>renderSection(body,item)});popupHandler=onSelection;toolbarHandler=onToolbar;Zotero.Reader.registerEventListener('renderTextSelectionPopup',popupHandler,ID);Zotero.Reader.registerEventListener('renderToolbar',toolbarHandler,ID);}
+export function stop():void{if(sectionID)Zotero.ItemPaneManager.unregisterSection(sectionID);if(popupHandler)Zotero.Reader.unregisterEventListener('renderTextSelectionPopup',popupHandler);if(toolbarHandler)Zotero.Reader.unregisterEventListener('renderToolbar',toolbarHandler);delete Zotero.AILiteraturePreferences;active.clear();pending.clear();pendingQuestion.clear();}
