@@ -1,0 +1,24 @@
+<groupbox>
+  <label value="模型服务"/>
+  <menulist preference="extensions.zotero.aiLiterature.provider"><menupopup><menuitem label="OpenAI 兼容" value="openai"/><menuitem label="DeepSeek (DS)" value="deepseek"/></menupopup></menulist>
+  <label value="LLM API URL（DeepSeek 留默认值即可）"/>
+  <textbox preference="extensions.zotero.aiLiterature.apiURL"/>
+  <label value="API Key"/>
+  <textbox type="password" preference="extensions.zotero.aiLiterature.apiKey"/>
+  <label value="Model（DeepSeek 推荐 deepseek-flash 或 deepseek-v4-pro）"/>
+  <textbox preference="extensions.zotero.aiLiterature.model"/>
+</groupbox>
+<groupbox>
+  <label value="领域"/>
+  <menulist preference="extensions.zotero.aiLiterature.domain"><menupopup><menuitem label="自动" value="auto"/><menuitem label="计算机视觉" value="cv"/><menuitem label="大语言模型" value="llm"/><menuitem label="大语言模型应用" value="llm_app"/><menuitem label="神经科学" value="neuro"/></menupopup></menulist>
+  <label value="全文长度上限"/>
+  <textbox type="number" preference="extensions.zotero.aiLiterature.maxChars"/>
+</groupbox>
+<groupbox>
+  <label value="搜索 API 类型"/>
+  <menulist preference="extensions.zotero.aiLiterature.searchType"><menupopup><menuitem label="关闭" value="off"/><menuitem label="Tavily" value="tavily"/><menuitem label="Serper" value="serper"/><menuitem label="自定义" value="custom"/></menupopup></menulist>
+  <label value="搜索 API URL"/>
+  <textbox preference="extensions.zotero.aiLiterature.searchURL"/>
+  <label value="搜索 API Key"/>
+  <textbox type="password" preference="extensions.zotero.aiLiterature.searchKey"/>
+</groupbox>

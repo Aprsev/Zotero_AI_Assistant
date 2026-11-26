@@ -1,0 +1,9 @@
+pref("extensions.zotero.aiLiterature.apiURL", "https://api.openai.com/v1/chat/completions");
+pref("extensions.zotero.aiLiterature.provider", "openai");
+pref("extensions.zotero.aiLiterature.apiKey", "");
+pref("extensions.zotero.aiLiterature.model", "gpt-4o-mini");
+pref("extensions.zotero.aiLiterature.domain", "auto");
+pref("extensions.zotero.aiLiterature.maxChars", 30000);
+pref("extensions.zotero.aiLiterature.searchType", "off");
+pref("extensions.zotero.aiLiterature.searchURL", "");
+pref("extensions.zotero.aiLiterature.searchKey", "");
