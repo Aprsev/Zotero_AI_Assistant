@@ -3,6 +3,7 @@ import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import katex from 'katex';
 import { questionContext } from './question-context';
+import { formatAnswerMarkdown } from './answer-format';
 
 declare const Zotero: any;
 declare const Services: any;
@@ -79,7 +80,7 @@ function domain(item:any):string {
   return names.llm;
 }
 function summaryPrompt(item:any, full:string):string {return `你是一个${domain(item)}领域的资深研究者。请阅读以下论文内容，生成一份结构化的中文总结报告，使用 Markdown 格式输出。\n\n要求：\n1. **一句话概括**：用一句话说明这篇论文做了什么、解决了什么问题。\n2. **核心贡献**（3-5 条）：区分“方法创新”与“实验发现”。\n3. **方法要点**：针对${domain(item)}领域，提取关键技术细节（网络架构/训练策略/实验范式/数据采集方式等，按领域自动适配）。\n4. **关键结果**：列出最重要的 2-3 个量化结果或定性发现。\n5. **局限与启示**：作者承认的局限，以及对后续研究的启发。\n6. **关联概念**：列出 3-5 个核心术语/方法名。\n\n论文内容：\n${full}`;}
-function questionPrompt(item:any,selected:string,question:string,web:string,context:string):string {return `你是一个学术阅读助手。用户正在阅读一篇论文，可能直接提问，也可能划选了片段。请基于提供的论文证据回答。\n\n【论文标题】${item.getField('title')}\n【选中片段】${selected||'无'}\n【论文上下文（含相关图注及附近文字）】${context}\n【联网检索结果】${web||'未启用联网，仅基于文献内容回答'}\n【用户问题】${question}\n\n回答要求：\n1. 优先依据论文正文、图注和选中片段直接回答，并说明依据。没有划词时也要理解问题。\n2. 用户询问 Fig./Figure/图/表时，先解释图注和正文对该图表的描述；如果仅有文字、无法看到图像本身，不要臆测视觉细节。\n3. 若联网结果可用，可补充外部知识并标明来源；若与文献冲突，要指出。\n4. 用简洁、可读的 Markdown 输出：必要时用短标题、**重点**和项目符号。通常控制在 300-500 字内，避免冗长铺垫。`;}
+function questionPrompt(item:any,selected:string,question:string,web:string,context:string):string {return `你是一个学术阅读助手。用户正在阅读一篇论文，可能直接提问，也可能划选了片段。请基于提供的论文证据回答。\n\n【论文标题】${item.getField('title')}\n【选中片段】${selected||'无'}\n【论文上下文（含相关图注及附近文字）】${context}\n【联网检索结果】${web||'未启用联网，仅基于文献内容回答'}\n【用户问题】${question}\n\n回答要求：\n1. 优先依据论文正文、图注和选中片段直接回答，并说明依据。没有划词时也要理解问题。\n2. 用户询问 Fig./Figure/图/表时，先解释图注和正文对该图表的描述；如果仅有文字、无法看到图像本身，不要臆测视觉细节。\n3. 若联网结果可用，可补充外部知识并标明来源；若与文献冲突，要指出。\n4. 输出易读的 Markdown：先用一小段直接回答，再用 2-4 条短要点解释依据。每段最多两句话；段落之间留空行。不要把所有内容写成一整段。通常控制在 300-500 字内。`;}
 
 async function search(item:any, selected:string, question:string):Promise<string> {
   const type=setting('searchType'), apiKey=setting('searchKey');
@@ -168,7 +169,7 @@ async function renderSection(body:HTMLElement, raw:any):Promise<void> {
     chatEmpty.hidden=true;const line=doc.createElement('div');line.className=`ai-message ai-message-${role}`;
     const bubble=doc.createElement('div');bubble.className=`ai-bubble ai-${role}`;line.append(bubble);messages.append(line);
     let current=text;
-    const setContent=(value:string)=>{current=value;if(role==='assistant')renderMD(bubble,value);else bubble.textContent=value;messages.scrollTop=messages.scrollHeight;};
+    const setContent=(value:string)=>{current=role==='assistant'?formatAnswerMarkdown(value):value;if(role==='assistant')renderMD(bubble,current);else bubble.textContent=current;messages.scrollTop=messages.scrollHeight;};
     setContent(text);
     if(role==='assistant'){
       const copy=button(doc,'复制',()=>{try{Zotero.Utilities.Internal.copyTextToClipboard(current);copy.textContent='已复制';setTimeout(()=>copy.textContent='复制',1500);}catch(e){Zotero.logError(e);}});
