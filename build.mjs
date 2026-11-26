@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 const pkg = JSON.parse(await readFile('package.json', 'utf8'));
 const manifest = JSON.parse(await readFile('addon/manifest.json', 'utf8'));
 manifest.version = pkg.version;
+await writeFile('addon/manifest.json', JSON.stringify(manifest, null, 2) + '\n');
 await rm('build', {recursive:true,force:true});
 await mkdir('build/content', {recursive:true});
 await cp('addon', 'build', {recursive:true});

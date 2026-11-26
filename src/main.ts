@@ -154,7 +154,24 @@ function onSelection({reader,doc,params,append}:any):void {
   row.append(button(doc,'提问',()=>{const k=key(item);pending.set(k,[selected]);const pane=active.get(k);const input=pane?.querySelector('textarea') as HTMLTextAreaElement|null;if(input){input.focus();if(!input.value.trim())input.value=reader._iframeWindow?.prompt?.('请输入问题')||'';if(input.value.trim())(pane!.querySelector('.ai-send') as HTMLButtonElement)?.click();}else reader._iframeWindow?.alert?.('请先打开右侧的 AI 总结区域');}));append(row);
 }
 function setupPrefs():void {
+  Zotero.AILiteraturePreferences = { init: initPreferences };
   Zotero.PreferencePanes.register({pluginID:ID,src:root+'content/preferences.xhtml',label:'AI 助手',image:root+'content/icon.svg'});
 }
+function initPreferences(win:Window):void {
+  const controls=win.document.querySelectorAll<HTMLInputElement|HTMLSelectElement>('[data-ai-pref]');
+  for(const control of Array.from(controls)){
+    const name=control.dataset.aiPref!;
+    control.value=name==='maxChars'
+      ? String(Services.prefs.getIntPref(PREFIX+name,30000))
+      : Services.prefs.getCharPref(PREFIX+name,'');
+    const save=()=>{
+      if(name==='maxChars'){
+        const value=Number(control.value);
+        if(Number.isInteger(value)&&value>=1000)Services.prefs.setIntPref(PREFIX+name,value);
+      }else Services.prefs.setCharPref(PREFIX+name,control.value);
+    };
+    control.addEventListener(control.localName==='select'?'change':'input',save);
+  }
+}
 export async function start(uri:string):Promise<void>{root=uri;setupPrefs();sectionID=Zotero.ItemPaneManager.registerSection({paneID:'ai-literature-summary',pluginID:ID,header:{l10nID:'ai-literature-header',icon:root+'content/icon.svg'},sidenav:{l10nID:'ai-literature-header',icon:root+'content/icon.svg'},bodyXHTML:'<div xmlns="http://www.w3.org/1999/xhtml"></div>',onAsyncRender:async({body,item}:any)=>renderSection(body,item)});popupHandler=onSelection;Zotero.Reader.registerEventListener('renderTextSelectionPopup',popupHandler,ID);}
-export function stop():void{if(sectionID)Zotero.ItemPaneManager.unregisterSection(sectionID);if(popupHandler)Zotero.Reader.unregisterEventListener('renderTextSelectionPopup',popupHandler);active.clear();pending.clear();}
+export function stop():void{if(sectionID)Zotero.ItemPaneManager.unregisterSection(sectionID);if(popupHandler)Zotero.Reader.unregisterEventListener('renderTextSelectionPopup',popupHandler);delete Zotero.AILiteraturePreferences;active.clear();pending.clear();}

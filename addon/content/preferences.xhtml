@@ -1,24 +1,26 @@
-<groupbox>
-  <label value="模型服务"/>
-  <menulist preference="extensions.zotero.aiLiterature.provider"><menupopup><menuitem label="OpenAI 兼容" value="openai"/><menuitem label="DeepSeek (DS)" value="deepseek"/></menupopup></menulist>
-  <label value="LLM API URL（DeepSeek 留默认值即可）"/>
-  <textbox preference="extensions.zotero.aiLiterature.apiURL"/>
-  <label value="API Key"/>
-  <textbox type="password" preference="extensions.zotero.aiLiterature.apiKey"/>
-  <label value="Model（DeepSeek 推荐 deepseek-flash 或 deepseek-v4-pro）"/>
-  <textbox preference="extensions.zotero.aiLiterature.model"/>
-</groupbox>
-<groupbox>
-  <label value="领域"/>
-  <menulist preference="extensions.zotero.aiLiterature.domain"><menupopup><menuitem label="自动" value="auto"/><menuitem label="计算机视觉" value="cv"/><menuitem label="大语言模型" value="llm"/><menuitem label="大语言模型应用" value="llm_app"/><menuitem label="神经科学" value="neuro"/></menupopup></menulist>
-  <label value="全文长度上限"/>
-  <textbox type="number" preference="extensions.zotero.aiLiterature.maxChars"/>
-</groupbox>
-<groupbox>
-  <label value="搜索 API 类型"/>
-  <menulist preference="extensions.zotero.aiLiterature.searchType"><menupopup><menuitem label="关闭" value="off"/><menuitem label="Tavily" value="tavily"/><menuitem label="Serper" value="serper"/><menuitem label="自定义" value="custom"/></menupopup></menulist>
-  <label value="搜索 API URL"/>
-  <textbox preference="extensions.zotero.aiLiterature.searchURL"/>
-  <label value="搜索 API Key"/>
-  <textbox type="password" preference="extensions.zotero.aiLiterature.searchKey"/>
-</groupbox>
+<vbox xmlns:html="http://www.w3.org/1999/xhtml" onload="Zotero.AILiteraturePreferences.init(window)">
+  <groupbox>
+    <label value="模型服务"/>
+    <html:select data-ai-pref="provider"><html:option value="openai">OpenAI 兼容</html:option><html:option value="deepseek">DeepSeek (DS)</html:option></html:select>
+    <label value="LLM API URL（DeepSeek 留默认值即可）"/>
+    <html:input type="text" data-ai-pref="apiURL"/>
+    <label value="API Key"/>
+    <html:input type="password" data-ai-pref="apiKey"/>
+    <label value="Model（DeepSeek 推荐 deepseek-flash 或 deepseek-v4-pro）"/>
+    <html:input type="text" data-ai-pref="model"/>
+  </groupbox>
+  <groupbox>
+    <label value="领域"/>
+    <html:select data-ai-pref="domain"><html:option value="auto">自动</html:option><html:option value="cv">计算机视觉</html:option><html:option value="llm">大语言模型</html:option><html:option value="llm_app">大语言模型应用</html:option><html:option value="neuro">神经科学</html:option></html:select>
+    <label value="全文长度上限"/>
+    <html:input type="number" min="1000" data-ai-pref="maxChars"/>
+  </groupbox>
+  <groupbox>
+    <label value="搜索 API 类型"/>
+    <html:select data-ai-pref="searchType"><html:option value="off">关闭</html:option><html:option value="tavily">Tavily</html:option><html:option value="serper">Serper</html:option><html:option value="custom">自定义</html:option></html:select>
+    <label value="搜索 API URL"/>
+    <html:input type="text" data-ai-pref="searchURL"/>
+    <label value="搜索 API Key"/>
+    <html:input type="password" data-ai-pref="searchKey"/>
+  </groupbox>
+</vbox>
