@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "AI 文献助手",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Zotero 文献总结与划词问答",
   "applications": {
     "zotero": {

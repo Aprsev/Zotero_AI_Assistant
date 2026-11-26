@@ -60,7 +60,7 @@ async function pdfText(item:any):Promise<string> {
   for (const id of item.getAttachments()) {
     const a=Zotero.Items.get(id);
     if (a?.attachmentContentType==='application/pdf') {
-      const result=await Zotero.PDFWorker.getFullText(a);
+      const result=await Zotero.PDFWorker.getFullText(a.id);
       if (result?.text) return result.text;
     }
   }
@@ -121,7 +121,7 @@ function renderMD(target:HTMLElement,md:string):void {
   const html=DOMPurify(doc.defaultView as any).sanitize(marked.parse(md,{async:false}) as string,{ADD_TAGS:['math']});
   target.innerHTML=html;
   // 参考 AI-Butler 的 Markdown 与 KaTeX 侧栏展示思路；公式只处理文本节点。
-  const walker=doc.createTreeWalker(target,doc.defaultView!.NodeFilter.SHOW_TEXT);const nodes:Text[]=[];
+  const walker=doc.createTreeWalker(target,doc.defaultView?.NodeFilter?.SHOW_TEXT ?? 4);const nodes:Text[]=[];
   while(walker.nextNode())nodes.push(walker.currentNode as Text);
   for(const node of nodes){if(node.parentElement?.closest('code,pre'))continue;const value=node.nodeValue||'';if(!/\$[^$]+\$/.test(value))continue;
     const span=doc.createElement('span');let last=0;const re=/\$([^$]+)\$/g;let match:RegExpExecArray|null;
@@ -130,27 +130,43 @@ function renderMD(target:HTMLElement,md:string):void {
   }
 }
 function button(doc:Document,label:string,action:()=>void):HTMLButtonElement {const b=doc.createElement('button');b.textContent=label;b.addEventListener('click',action);return b;}
+function shortError(e:unknown):string {const message=error(e).split('[QUERY:')[0].trim();return message.length>180?message.slice(0,180)+'…':message;}
 function openWindow(md:string):void {const win=Services.ww.openWindow(null,root+'content/report.xhtml','ai-literature-report','chrome,resizable,centerscreen,width=900,height=750',null);win.addEventListener('load',()=>{const d=win.document;const content=d.getElementById('report') as HTMLElement;renderMD(content,md);}, {once:true});}
 async function renderSection(body:HTMLElement, raw:any):Promise<void> {
   const item=parent(raw);body.replaceChildren();if(!item||!item.isRegularItem?.())return;
   const doc=body.ownerDocument, wrap=doc.createElement('div');wrap.className='ai-literature';body.append(wrap);
-  const style=doc.createElement('style');style.textContent='.ai-literature{font:13px/1.5 sans-serif;padding:8px;min-width:0}.ai-toolbar{display:flex;gap:6px;margin-bottom:8px}.ai-literature button{cursor:pointer;padding:3px 7px}.ai-report{max-height:45vh;overflow:auto;overflow-wrap:anywhere;padding:8px;border:1px solid #9995}.ai-report pre{overflow:auto}.ai-chat{margin-top:10px}.ai-messages{max-height:28vh;overflow:auto}.ai-bubble{margin:6px 0;padding:7px;border-radius:6px;white-space:pre-wrap;overflow-wrap:anywhere}.ai-user{background:#3b78be33}.ai-assistant{background:#8882}.ai-chat textarea{box-sizing:border-box;width:100%;min-height:55px;margin:6px 0}';wrap.prepend(style);
-  const toolbar=doc.createElement('div');toolbar.className='ai-toolbar';wrap.append(toolbar);
-  const report=doc.createElement('div');report.className='ai-report';wrap.append(report);
-  const chat=doc.createElement('div');chat.className='ai-chat';wrap.append(chat);
+  const css=doc.createElement('link');css.rel='stylesheet';css.href=root+'content/panel.css';wrap.append(css);
+  const header=doc.createElement('div');header.className='ai-header';wrap.append(header);
+  const brand=doc.createElement('div');brand.className='ai-brand';brand.textContent='✦';header.append(brand);
+  const heading=doc.createElement('div');heading.className='ai-heading';header.append(heading);
+  const title=doc.createElement('strong');title.textContent='AI 文献助手';heading.append(title);
+  const subtitle=doc.createElement('span');subtitle.textContent='与你一起阅读这篇论文';heading.append(subtitle);
+  const tabs=doc.createElement('div');tabs.className='ai-tabs';wrap.append(tabs);
+  const summaryTab=button(doc,'文献总结',()=>showTab('summary'));summaryTab.dataset.aiTab='summary';tabs.append(summaryTab);
+  const chatTab=button(doc,'问答',()=>showTab('chat'));chatTab.dataset.aiTab='chat';tabs.append(chatTab);
+  const summary=doc.createElement('section');summary.className='ai-summary-panel';wrap.append(summary);
+  const actions=doc.createElement('div');actions.className='ai-summary-actions';summary.append(actions);
+  const report=doc.createElement('article');report.className='ai-report';summary.append(report);
+  const chat=doc.createElement('section');chat.className='ai-chat';wrap.append(chat);
+  function showTab(tab:'summary'|'chat'):void {summary.hidden=tab!=='summary';chat.hidden=tab!=='chat';summaryTab.classList.toggle('is-active',tab==='summary');chatTab.classList.toggle('is-active',tab==='chat');}
+  function showEmpty(titleText:string,detail:string,kind='empty'):void {report.replaceChildren();const card=doc.createElement('div');card.className=`ai-state ai-state-${kind}`;const icon=doc.createElement('div');icon.className='ai-state-icon';icon.textContent=kind==='error'?'!':'✦';const heading=doc.createElement('strong');heading.textContent=titleText;const note=doc.createElement('p');note.textContent=detail;card.append(icon,heading,note);report.append(card);}
   const cached=await readJSON(item,'ai_summary');let md=cached?.ai_summary||'';
-  if(md)renderMD(report,md);else report.textContent='尚无总结报告';
-  toolbar.append(button(doc,'生成/更新总结',async()=>{report.textContent='正在读取 PDF…';try{const full=pickText(await pdfText(item),Math.max(1000,Number(Services.prefs.getIntPref(PREFIX+'maxChars',30000))));report.textContent='正在生成…';md=await llm(summaryPrompt(item,full),s=>renderMD(report,s));await writeJSON(item,'ai_summary',{ai_summary:md,updated_at:new Date().toISOString()});}catch(e){report.textContent=`生成失败：${error(e)}`;}}));
-  toolbar.append(button(doc,'在新窗口打开',()=>{if(md)openWindow(md);}));
-  const status=doc.createElement('div');status.textContent=`联网：${setting('searchType')==='off'||!setting('searchKey')?'OFF':'ON'}`;chat.append(status);
+  if(md)renderMD(report,md);else showEmpty('从这篇论文开始','生成结构化摘要，快速了解贡献、方法和结果。');
+  const generate=button(doc,md?'重新生成':'生成总结',async()=>{showEmpty('正在读取论文','正在提取 PDF 文本，请稍候。','loading');try{const full=pickText(await pdfText(item),Math.max(1000,Number(Services.prefs.getIntPref(PREFIX+'maxChars',30000))));showEmpty('正在生成总结','模型正在整理这篇论文。','loading');md=await llm(summaryPrompt(item,full),s=>renderMD(report,s));await writeJSON(item,'ai_summary',{ai_summary:md,updated_at:new Date().toISOString()});generate.textContent='重新生成';}catch(e){Zotero.logError(e);showEmpty('暂时无法生成',shortError(e),'error');}});generate.className='ai-primary';actions.append(generate);
+  const popout=button(doc,'↗',()=>{if(md)openWindow(md);});popout.className='ai-icon-button';popout.title='在新窗口打开报告';actions.append(popout);
+  const status=doc.createElement('div');status.className='ai-status';status.textContent=setting('searchType')==='off'||!setting('searchKey')?'○ 仅文献':'● 已联网';chat.append(status);
   const messages=doc.createElement('div');messages.className='ai-messages';chat.append(messages);
-  const input=doc.createElement('textarea');input.placeholder='针对划词内容提问…';chat.append(input);
+  const chatEmpty=doc.createElement('div');chatEmpty.className='ai-chat-empty';chatEmpty.innerHTML='<span>✦</span><strong>针对论文提问</strong><p>划选一段文字，或直接输入你的问题。</p>';messages.append(chatEmpty);
+  const composer=doc.createElement('div');composer.className='ai-composer';chat.append(composer);
+  const input=doc.createElement('textarea');input.placeholder='问问这篇论文…';input.rows=2;composer.append(input);
   const current=key(item);active.set(current,chat);
   const saved=await readJSON(item,'ai_conversation');const history:any[]=Array.isArray(saved?.messages)?saved.messages:[];
-  function add(role:string,text:string):HTMLElement{const bubble=doc.createElement('div');bubble.className=`ai-bubble ai-${role}`;bubble.textContent=text;messages.append(bubble);return bubble;}
+  function add(role:string,text:string):HTMLElement{chatEmpty.hidden=true;const bubble=doc.createElement('div');bubble.className=`ai-bubble ai-${role}`;bubble.textContent=text;messages.append(bubble);messages.scrollTop=messages.scrollHeight;return bubble;}
   history.forEach(m=>add(m.role,m.content));
-  const send=button(doc,'发送',async()=>{const selected=(pending.get(current)||[]).join('\n'),question=input.value.trim();if(!question)return;input.value='';const user=selected?`${question}\n【选中】${selected}`:question;add('user',user);history.push({role:'user',content:user});const bubble=add('assistant','正在回答…');try{const web=await search(item,selected,question);const context=(item.getField('abstractNote')||'').slice(0,2000);const answer=await llm(questionPrompt(item,selected,question,web,context),s=>bubble.textContent=s);history.push({role:'assistant',content:answer});pending.delete(current);await writeJSON(item,'ai_conversation',{itemKey:item.key,messages:history});}catch(e){bubble.textContent=`回答失败：${error(e)}`;}});send.className='ai-send';chat.append(send);
-  const queued=pendingQuestion.get(current);if(queued){pendingQuestion.delete(current);input.value=queued;send.click();}
+  const send=button(doc,'↑',async()=>{const selected=(pending.get(current)||[]).join('\n'),question=input.value.trim();if(!question)return;input.value='';const user=selected?`${question}\n【选中】${selected}`:question;add('user',user);history.push({role:'user',content:user});const bubble=add('assistant','正在回答…');try{const web=await search(item,selected,question);const context=(item.getField('abstractNote')||'').slice(0,2000);const answer=await llm(questionPrompt(item,selected,question,web,context),s=>bubble.textContent=s);history.push({role:'assistant',content:answer});pending.delete(current);await writeJSON(item,'ai_conversation',{itemKey:item.key,messages:history});}catch(e){Zotero.logError(e);bubble.textContent=`回答失败：${shortError(e)}`;}});send.className='ai-send';send.title='发送问题';composer.append(send);
+  input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send.click();}});
+  showTab('summary');
+  const queued=pendingQuestion.get(current);if(queued){pendingQuestion.delete(current);showTab('chat');input.value=queued;send.click();}
 }
 function openAIPane(reader:any):boolean {
   const windows=[reader?._iframeWindow?.top,Zotero.getMainWindow()].filter(Boolean);
@@ -180,8 +196,8 @@ function onSelection({reader,doc,params,append}:any):void {
   row.style.cssText='display:flex;align-items:center;gap:4px;padding:4px;border-radius:8px;background:var(--popup-bg,#fff);box-shadow:0 1px 5px #0002';
   const action=(label:string,icon:string,handler:()=>void)=>{const b=button(doc,`${icon} ${label}`,handler);b.type='button';b.style.cssText='border:0;border-radius:6px;background:transparent;color:var(--text-color,#333);font:500 12px sans-serif;white-space:nowrap;padding:5px 8px;cursor:pointer';b.addEventListener('mouseenter',()=>b.style.background='var(--fill-quinary,#e9edf5)');b.addEventListener('mouseleave',()=>b.style.background='transparent');return b;};
   // 参考 zotero-dsh：只追加两个按钮，保留 Zotero 原生气泡操作。
-  row.append(action('加入对话','+',()=>{const k=key(item);pending.set(k,[...(pending.get(k)||[]),selected]);openAIPane(reader);}));
-  row.append(action('提问','✦',()=>{const k=key(item);pending.set(k,[selected]);const pane=active.get(k);const input=pane?.isConnected?pane.querySelector('textarea') as HTMLTextAreaElement:null;const question=input?.value.trim()||reader._iframeWindow?.prompt?.('请输入问题')?.trim()||'';if(!question)return;if(input){input.value=question;(pane!.querySelector('.ai-send') as HTMLButtonElement)?.click();}else{pendingQuestion.set(k,question);if(!openAIPane(reader))reader._iframeWindow?.alert?.('请在右侧条目面板中打开“AI 总结”');}}));append(row);
+  row.append(action('加入对话','+',()=>{const k=key(item);pending.set(k,[...(pending.get(k)||[]),selected]);openAIPane(reader);active.get(k)?.closest('.ai-literature')?.querySelector<HTMLButtonElement>('[data-ai-tab="chat"]')?.click();}));
+  row.append(action('提问','✦',()=>{const k=key(item);pending.set(k,[selected]);const pane=active.get(k);const input=pane?.isConnected?pane.querySelector('textarea') as HTMLTextAreaElement:null;const question=input?.value.trim()||reader._iframeWindow?.prompt?.('请输入问题')?.trim()||'';if(!question)return;if(input){pane!.closest('.ai-literature')?.querySelector<HTMLButtonElement>('[data-ai-tab="chat"]')?.click();input.value=question;(pane!.querySelector('.ai-send') as HTMLButtonElement)?.click();}else{pendingQuestion.set(k,question);if(!openAIPane(reader))reader._iframeWindow?.alert?.('请在右侧条目面板中打开“AI 总结”');}}));append(row);
 }
 function setupPrefs():void {
   Zotero.AILiteraturePreferences = { init: initPreferences };

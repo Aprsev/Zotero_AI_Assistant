@@ -3,9 +3,9 @@
     "ai-literature-assistant@local": {
       "updates": [
         {
-          "version": "0.1.6",
+          "version": "0.1.7",
           "update_link": "https://raw.githubusercontent.com/Aprsev/Zotero_AI_Assistant/main/ai-literature-assistant.xpi",
-          "update_hash": "sha256:0c9e81e12173356219c5007c7cfc8dedf4ccd80bb521a4c135c9ee6d77b2650f",
+          "update_hash": "sha256:40d14c7e1eab86bd21dc7e5d12e8469bc5546577b1ec239a61cf5e4cb8aa26e9",
           "applications": {
             "zotero": {
               "strict_min_version": "7.0",
