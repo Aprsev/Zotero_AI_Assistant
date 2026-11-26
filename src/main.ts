@@ -2,6 +2,7 @@ import { BasicTool } from 'zotero-plugin-toolkit';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import katex from 'katex';
+import { questionContext } from './question-context';
 
 declare const Zotero: any;
 declare const Services: any;
@@ -21,6 +22,7 @@ let root = '';
 const pending = new Map<string,string[]>();
 const pendingQuestion = new Map<string,string>();
 const active = new Map<string,HTMLElement>();
+const fullTextCache = new Map<string,string>();
 
 function pref(key:string):any { return Services.prefs.getCharPref(PREFIX+key, ''); }
 function setting(key:string):string { return String(pref(key) || ''); }
@@ -57,11 +59,12 @@ function pickText(text:string, max:number):string {
   return (chunks.length?chunks.join('\n\n'):text).slice(0,max);
 }
 async function pdfText(item:any):Promise<string> {
+  const cached=fullTextCache.get(key(item));if(cached)return cached;
   for (const id of item.getAttachments()) {
     const a=Zotero.Items.get(id);
     if (a?.attachmentContentType==='application/pdf') {
       const result=await Zotero.PDFWorker.getFullText(a.id);
-      if (result?.text) return result.text;
+      if (result?.text){fullTextCache.set(key(item),result.text);return result.text;}
     }
   }
   throw new Error('此条目没有可提取文本的 PDF 附件');
@@ -76,7 +79,7 @@ function domain(item:any):string {
   return names.llm;
 }
 function summaryPrompt(item:any, full:string):string {return `你是一个${domain(item)}领域的资深研究者。请阅读以下论文内容，生成一份结构化的中文总结报告，使用 Markdown 格式输出。\n\n要求：\n1. **一句话概括**：用一句话说明这篇论文做了什么、解决了什么问题。\n2. **核心贡献**（3-5 条）：区分“方法创新”与“实验发现”。\n3. **方法要点**：针对${domain(item)}领域，提取关键技术细节（网络架构/训练策略/实验范式/数据采集方式等，按领域自动适配）。\n4. **关键结果**：列出最重要的 2-3 个量化结果或定性发现。\n5. **局限与启示**：作者承认的局限，以及对后续研究的启发。\n6. **关联概念**：列出 3-5 个核心术语/方法名。\n\n论文内容：\n${full}`;}
-function questionPrompt(item:any,selected:string,question:string,web:string,context:string):string {return `你是一个学术阅读助手。用户正在阅读一篇论文，并选中了以下片段进行提问。\n\n【论文标题】${item.getField('title')}\n【选中片段】${selected}\n【论文上下文】${context}\n【联网检索结果】${web||'未启用联网，仅基于文献内容回答'}\n【用户问题】${question}\n\n回答要求：\n1. 首先基于选中片段和论文上下文给出直接回答，标注依据来自文献。\n2. 若联网结果可用，补充外部知识，标注来源。\n3. 若文献与联网信息冲突，明确指出。\n4. 回答控制在 200 字以内，简洁优先。\n\n你的回答将展示在 Zotero 侧边栏的紧凑对话区域，避免冗长铺垫。`;}
+function questionPrompt(item:any,selected:string,question:string,web:string,context:string):string {return `你是一个学术阅读助手。用户正在阅读一篇论文，可能直接提问，也可能划选了片段。请基于提供的论文证据回答。\n\n【论文标题】${item.getField('title')}\n【选中片段】${selected||'无'}\n【论文上下文（含相关图注及附近文字）】${context}\n【联网检索结果】${web||'未启用联网，仅基于文献内容回答'}\n【用户问题】${question}\n\n回答要求：\n1. 优先依据论文正文、图注和选中片段直接回答，并说明依据。没有划词时也要理解问题。\n2. 用户询问 Fig./Figure/图/表时，先解释图注和正文对该图表的描述；如果仅有文字、无法看到图像本身，不要臆测视觉细节。\n3. 若联网结果可用，可补充外部知识并标明来源；若与文献冲突，要指出。\n4. 用简洁、可读的 Markdown 输出：必要时用短标题、**重点**和项目符号。通常控制在 300-500 字内，避免冗长铺垫。`;}
 
 async function search(item:any, selected:string, question:string):Promise<string> {
   const type=setting('searchType'), apiKey=setting('searchKey');
@@ -161,9 +164,35 @@ async function renderSection(body:HTMLElement, raw:any):Promise<void> {
   const input=doc.createElement('textarea');input.placeholder='问问这篇论文…';input.rows=2;composer.append(input);
   const current=key(item);active.set(current,chat);
   const saved=await readJSON(item,'ai_conversation');const history:any[]=Array.isArray(saved?.messages)?saved.messages:[];
-  function add(role:string,text:string):HTMLElement{chatEmpty.hidden=true;const bubble=doc.createElement('div');bubble.className=`ai-bubble ai-${role}`;bubble.textContent=text;messages.append(bubble);messages.scrollTop=messages.scrollHeight;return bubble;}
+  function add(role:string,text:string):{bubble:HTMLElement,setContent:(value:string)=>void}{
+    chatEmpty.hidden=true;const line=doc.createElement('div');line.className=`ai-message ai-message-${role}`;
+    const bubble=doc.createElement('div');bubble.className=`ai-bubble ai-${role}`;line.append(bubble);messages.append(line);
+    let current=text;
+    const setContent=(value:string)=>{current=value;if(role==='assistant')renderMD(bubble,value);else bubble.textContent=value;messages.scrollTop=messages.scrollHeight;};
+    setContent(text);
+    if(role==='assistant'){
+      const copy=button(doc,'复制',()=>{try{Zotero.Utilities.Internal.copyTextToClipboard(current);copy.textContent='已复制';setTimeout(()=>copy.textContent='复制',1500);}catch(e){Zotero.logError(e);}});
+      copy.className='ai-copy';copy.title='复制回答 Markdown';line.append(copy);
+    }
+    return {bubble,setContent};
+  }
   history.forEach(m=>add(m.role,m.content));
-  const send=button(doc,'↑',async()=>{const selected=(pending.get(current)||[]).join('\n'),question=input.value.trim();if(!question)return;input.value='';const user=selected?`${question}\n【选中】${selected}`:question;add('user',user);history.push({role:'user',content:user});const bubble=add('assistant','正在回答…');try{const web=await search(item,selected,question);const context=(item.getField('abstractNote')||'').slice(0,2000);const answer=await llm(questionPrompt(item,selected,question,web,context),s=>bubble.textContent=s);history.push({role:'assistant',content:answer});pending.delete(current);await writeJSON(item,'ai_conversation',{itemKey:item.key,messages:history});}catch(e){Zotero.logError(e);bubble.textContent=`回答失败：${shortError(e)}`;}});send.className='ai-send';send.title='发送问题';composer.append(send);
+  const send=button(doc,'↑',async()=>{
+    const selected=(pending.get(current)||[]).join('\n'),question=input.value.trim();if(!question)return;
+    input.value='';const user=selected?`${question}\n【选中】${selected}`:question;add('user',user);history.push({role:'user',content:user});
+    const response=add('assistant','正在查找论文内容…');
+    try{
+      const web=await search(item,selected,question);
+      const limit=Math.min(12000,Math.max(1000,Services.prefs.getIntPref(PREFIX+'maxChars',30000)));
+      let context=String(item.getField('abstractNote')||'').slice(0,1800);
+      try{const full=await pdfText(item);context=[context,questionContext(full,question,limit,pickText(full,limit))].filter(Boolean).join('\n\n');}
+      catch(e){Zotero.debug(`AI Literature PDF context unavailable: ${shortError(e)}`);context+='\n（PDF 正文不可用，请勿推测图像细节。）';}
+      response.setContent('正在回答…');
+      const answer=await llm(questionPrompt(item,selected,question,web,context),response.setContent);
+      response.setContent(answer);history.push({role:'assistant',content:answer});pending.delete(current);
+      await writeJSON(item,'ai_conversation',{itemKey:item.key,messages:history});
+    }catch(e){Zotero.logError(e);response.setContent(`**回答失败：** ${shortError(e)}`);}
+  });send.className='ai-send';send.title='发送问题';composer.append(send);
   input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send.click();}});
   showTab('summary');
   const queued=pendingQuestion.get(current);if(queued){pendingQuestion.delete(current);showTab('chat');input.value=queued;send.click();}
@@ -246,4 +275,4 @@ function initPreferences(win:Window):void {
   }
 }
 export async function start(uri:string):Promise<void>{root=uri;setupPrefs();sectionID=Zotero.ItemPaneManager.registerSection({paneID:'ai-literature-summary',pluginID:ID,header:{l10nID:'ai-literature-header',icon:root+'content/icon.svg'},sidenav:{l10nID:'ai-literature-header',icon:root+'content/icon.svg'},bodyXHTML:'<div xmlns="http://www.w3.org/1999/xhtml"></div>',onItemChange:({item,setEnabled}:any)=>{setEnabled(Boolean(parent(item)?.isRegularItem?.()));return true;},onRender:({body}:any)=>{body.textContent='正在加载 AI 助手…';},onAsyncRender:async({body,item}:any)=>renderSection(body,item)});popupHandler=onSelection;toolbarHandler=onToolbar;Zotero.Reader.registerEventListener('renderTextSelectionPopup',popupHandler,ID);Zotero.Reader.registerEventListener('renderToolbar',toolbarHandler,ID);}
-export function stop():void{if(sectionID)Zotero.ItemPaneManager.unregisterSection(sectionID);if(popupHandler)Zotero.Reader.unregisterEventListener('renderTextSelectionPopup',popupHandler);if(toolbarHandler)Zotero.Reader.unregisterEventListener('renderToolbar',toolbarHandler);delete Zotero.AILiteraturePreferences;active.clear();pending.clear();pendingQuestion.clear();}
+export function stop():void{if(sectionID)Zotero.ItemPaneManager.unregisterSection(sectionID);if(popupHandler)Zotero.Reader.unregisterEventListener('renderTextSelectionPopup',popupHandler);if(toolbarHandler)Zotero.Reader.unregisterEventListener('renderToolbar',toolbarHandler);delete Zotero.AILiteraturePreferences;active.clear();pending.clear();pendingQuestion.clear();fullTextCache.clear();}
