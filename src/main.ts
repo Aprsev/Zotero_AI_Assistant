@@ -9,6 +9,10 @@ declare const IOUtils: any;
 declare const PathUtils: any;
 const ID = 'ai-literature-assistant@local';
 const PREFIX = 'extensions.zotero.aiLiterature.';
+const PROVIDER_DEFAULTS = {
+  openai: { apiURL: 'https://api.openai.com/v1/chat/completions', model: 'gpt-4o-mini' },
+  deepseek: { apiURL: 'https://api.deepseek.com/chat/completions', model: 'deepseek-flash' },
+};
 const toolkit = new BasicTool();
 let sectionID = '';
 let popupHandler: any;
@@ -159,18 +163,44 @@ function setupPrefs():void {
 }
 function initPreferences(win:Window):void {
   const controls=win.document.querySelectorAll<HTMLInputElement|HTMLSelectElement>('[data-ai-pref]');
+  const field=(name:string)=>win.document.querySelector<HTMLInputElement>(`[data-ai-pref="${name}"]`)!;
   for(const control of Array.from(controls)){
     const name=control.dataset.aiPref!;
     control.value=name==='maxChars'
       ? String(Services.prefs.getIntPref(PREFIX+name,30000))
       : Services.prefs.getCharPref(PREFIX+name,'');
     const save=()=>{
-      if(name==='maxChars'){
+      if(name==='provider'){
+        const previous=Services.prefs.getCharPref(PREFIX+'provider','openai');
+        const next=control.value as keyof typeof PROVIDER_DEFAULTS;
+        if(previous===next || !PROVIDER_DEFAULTS[next])return;
+        if(PROVIDER_DEFAULTS[previous as keyof typeof PROVIDER_DEFAULTS]){
+          Services.prefs.setCharPref(PREFIX+previous+'ApiURL',field('apiURL').value);
+          Services.prefs.setCharPref(PREFIX+previous+'Model',field('model').value);
+        }
+        Services.prefs.setCharPref(PREFIX+'provider',next);
+        for(const property of ['apiURL','model'] as const){
+          const saved=Services.prefs.getCharPref(PREFIX+next+(property==='apiURL'?'ApiURL':'Model'),PROVIDER_DEFAULTS[next][property]);
+          field(property).value=saved;
+          Services.prefs.setCharPref(PREFIX+property,saved);
+        }
+      }else if(name==='maxChars'){
         const value=Number(control.value);
         if(Number.isInteger(value)&&value>=1000)Services.prefs.setIntPref(PREFIX+name,value);
       }else Services.prefs.setCharPref(PREFIX+name,control.value);
     };
     control.addEventListener(control.localName==='select'?'change':'input',save);
+  }
+  // 旧版本仅切换服务商标识时，页面可能仍保留另一家的默认地址和模型。
+  const provider=Services.prefs.getCharPref(PREFIX+'provider','openai') as keyof typeof PROVIDER_DEFAULTS;
+  if(PROVIDER_DEFAULTS[provider]){
+    const other=provider==='openai'?'deepseek':'openai';
+    for(const property of ['apiURL','model'] as const){
+      if(field(property).value===PROVIDER_DEFAULTS[other][property]){
+        field(property).value=PROVIDER_DEFAULTS[provider][property];
+        Services.prefs.setCharPref(PREFIX+property,field(property).value);
+      }
+    }
   }
 }
 export async function start(uri:string):Promise<void>{root=uri;setupPrefs();sectionID=Zotero.ItemPaneManager.registerSection({paneID:'ai-literature-summary',pluginID:ID,header:{l10nID:'ai-literature-header',icon:root+'content/icon.svg'},sidenav:{l10nID:'ai-literature-header',icon:root+'content/icon.svg'},bodyXHTML:'<div xmlns="http://www.w3.org/1999/xhtml"></div>',onAsyncRender:async({body,item}:any)=>renderSection(body,item)});popupHandler=onSelection;Zotero.Reader.registerEventListener('renderTextSelectionPopup',popupHandler,ID);}

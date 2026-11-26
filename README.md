@@ -14,6 +14,8 @@
 
 使用 DeepSeek（DS）时，将“模型服务”选为 **DeepSeek (DS)**，填入 DeepSeek API Key。若 API URL 和 Model 仍为初始默认值，插件会自动使用 `https://api.deepseek.com/chat/completions` 与 `deepseek-flash`；也可把 Model 改成 `deepseek-v4-pro`。流式响应只展示最终回答内容，思考过程不会写入报告或对话。自定义 API URL 和模型名称会保留。
 
+切换 OpenAI / DeepSeek 时，设置页会立即切换到对应的 API URL 和模型名称；每个服务商单独记住上次填写的自定义 URL 与模型。API Key 仍为共用字段，切换服务商后请确认 Key 与所选服务商匹配。
+
 ## 使用
 
 选中文献条目，展开右侧“AI 总结”，点击“生成/更新总结”。报告保存在条目下的 `AI Literature ai_summary.json` 附件，字段为 `ai_summary`（Markdown 文本）。可在侧栏滚动查看或点击“在新窗口打开”。
