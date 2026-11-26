@@ -4,6 +4,7 @@ import DOMPurify from 'dompurify';
 import katex from 'katex';
 import { questionContext } from './question-context';
 import { formatAnswerMarkdown } from './answer-format';
+import panelCSS from '../addon/content/panel.css';
 
 declare const Zotero: any;
 declare const Services: any;
@@ -139,7 +140,7 @@ function openWindow(md:string):void {const win=Services.ww.openWindow(null,root+
 async function renderSection(body:HTMLElement, raw:any):Promise<void> {
   const item=parent(raw);body.replaceChildren();if(!item||!item.isRegularItem?.())return;
   const doc=body.ownerDocument, wrap=doc.createElement('div');wrap.className='ai-literature';body.append(wrap);
-  const css=doc.createElement('link');css.rel='stylesheet';css.href=root+'content/panel.css';wrap.append(css);
+  const css=doc.createElementNS('http://www.w3.org/1999/xhtml','style');css.textContent=panelCSS;wrap.prepend(css);
   const header=doc.createElement('div');header.className='ai-header';wrap.append(header);
   const brand=doc.createElement('div');brand.className='ai-brand';brand.textContent='✦';header.append(brand);
   const heading=doc.createElement('div');heading.className='ai-heading';header.append(heading);

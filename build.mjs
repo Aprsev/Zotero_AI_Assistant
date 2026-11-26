@@ -10,7 +10,7 @@ await rm('build', {recursive:true,force:true});
 await mkdir('build/content', {recursive:true});
 await cp('addon', 'build', {recursive:true});
 await writeFile('build/manifest.json', JSON.stringify(manifest, null, 2) + '\n');
-await build({entryPoints:['src/main.ts'],outfile:'build/content/main.js',bundle:true,format:'iife',target:'firefox115',platform:'browser',globalName:'AILiterature'});
+await build({entryPoints:['src/main.ts'],outfile:'build/content/main.js',bundle:true,format:'iife',target:'firefox115',platform:'browser',globalName:'AILiterature',loader:{'.css':'text'}});
 await cp('node_modules/katex/dist/katex.min.css','build/content/katex.min.css');
 await cp('node_modules/katex/dist/fonts','build/content/fonts',{recursive:true});
 execFileSync('python',['-c',"import zipfile,pathlib; z=zipfile.ZipFile('ai-literature-assistant.xpi','w',zipfile.ZIP_DEFLATED); [z.write(p,p.relative_to('build')) for p in pathlib.Path('build').rglob('*') if p.is_file()]; z.close()"]);
